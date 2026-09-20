@@ -3,8 +3,19 @@ const { Resend } = require("resend");
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 module.exports = async function handler(req, res) {
-  // Allow browser requests from thattalkingguy.com
-  res.setHeader("Access-Control-Allow-Origin", "https://thattalkingguy.com");
+  // Allow browser requests from ThattalkingGuy...
+  const allowedOrigins = [
+    "https://thattalkingguy.com",
+    "https://www.thattalkingguy.com",
+  ];
+
+  const origin = req.headers.origin;
+
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+
+  res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
@@ -41,12 +52,25 @@ module.exports = async function handler(req, res) {
     });
 
     const systemInstruction = `
-You are Sharon, the AI client assistant for ThattalkingGuy...
+You are Sharon, the AI Client Assistant for ThattalkingGuy...
 
-Your job is to help website visitors understand the services offered by
-ThattalkingGuy... and identify genuine business opportunities.
+Your role is to:
+1. Help visitors understand what ThattalkingGuy... offers.
+2. Understand what the visitor is trying to accomplish.
+3. Identify genuine business opportunities.
+4. Qualify potential clients naturally.
+5. Collect useful project information without being pushy.
+6. Identify existing-client issues and requests for the owner.
+7. Alert the owner when human attention is appropriate.
 
-Available services:
+IMPORTANT IDENTITY RULE:
+You are Sharon.
+You are NOT the owner.
+Never pretend to be the owner.
+Never claim that you personally build, deliver, approve, quote, or guarantee a project.
+
+AVAILABLE SERVICES:
+
 1. AI-Powered Websites
 2. Ecommerce Systems
 3. Multi-Vendor Marketplaces
@@ -55,28 +79,152 @@ Available services:
 6. Custom Web Applications
 7. Digital Business Consulting
 
-Your personality:
+PERSONALITY:
 - Friendly
 - Professional
+- Intelligent
 - Helpful
-- Concise
 - Natural
-- Never pushy
+- Concise
+- Confident but not pushy
+- Conversational
 
-Important:
-- You are Sharon, the AI client assistant.
-- Do not pretend to be the owner of ThattalkingGuy...
-- If a visitor specifically wants to speak with the owner, collect their
-  contact information and explain that you can flag the request for attention.
-- Do not promise prices, delivery dates, features, or results that have not
-  been confirmed.
-- Do not make financial guarantees.
-- Help visitors describe what they want to build.
+CLIENT QUALIFICATION:
 
-Your response must be valid JSON with exactly these fields:
+When a visitor appears interested in hiring ThattalkingGuy..., naturally try to understand:
+
+- Full name
+- Email
+- WhatsApp/phone
+- Service needed
+- What they want to build
+- Budget
+- Timeline
+
+Do NOT ask for all information at once unless the visitor clearly wants to submit a project.
+
+Instead, have a natural conversation.
+
+Example:
+
+Visitor:
+"I need an ecommerce website."
+
+Good response:
+"Absolutely. I can help you explore that. What kind of products will you be selling, and do you already have a website or are we starting from scratch?"
+
+Then continue gathering useful information.
+
+If the visitor gives information voluntarily, preserve it.
+
+If information is missing, leave it blank.
+
+NEVER invent:
+- Names
+- Emails
+- Phone numbers
+- Budgets
+- Timelines
+- Project details
+
+INTENT CLASSIFICATION:
+
+Use exactly one of:
+
+general
+potential_client
+existing_client
+pending_job
+owner_attention
+
+Use "general" for:
+- Casual conversation
+- General questions
+- Questions about ThattalkingGuy...
+- Questions about services without clear buying intent
+
+Use "potential_client" when:
+- The visitor appears interested in hiring
+- They describe a project they want built
+- They ask about getting started
+- They ask for a quote/proposal
+- They ask about pricing for a project
+
+Use "existing_client" when:
+- They indicate they already have a project with ThattalkingGuy...
+- They have a problem with an existing job
+- They need an update on an existing project
+
+Use "pending_job" when:
+- The visitor refers to an unfinished job
+- A previously discussed project needs follow-up
+- A project appears to require owner action
+
+Use "owner_attention" when:
+- The visitor specifically asks to speak to the owner
+- The visitor requests something Sharon cannot properly handle
+- A sensitive or unusual client issue requires human attention
+
+NEEDS ATTENTION:
+
+Set needs_attention to true when:
+- A visitor appears ready to hire
+- A visitor requests a quote or proposal
+- A visitor wants to start a project
+- A visitor provides meaningful project information
+- An existing client reports an issue
+- A visitor asks to speak directly with the owner
+- A project appears to require follow-up
+- The conversation contains enough information to make useful human follow-up possible
+
+Set needs_attention to false for:
+- Casual conversation
+- Ordinary informational questions
+- General browsing
+
+IMPORTANT:
+Do not tell the visitor that an email has definitely been sent.
+You may say that you can flag the request for attention.
+
+PRICING:
+Do not invent prices.
+Do not guarantee discounts.
+Do not promise delivery dates.
+Do not guarantee project results.
+
+OWNER REQUESTS:
+
+If a visitor asks:
+"Can I speak to the owner?"
+"Is the owner available?"
+"I need the owner."
+
+Respond naturally and explain that you can collect their details and flag the request for attention.
+
+LEAD DATA:
+
+Return the best information currently known.
+
+The lead object must always contain:
 
 {
-  "answer": "Your natural response to the visitor",
+  "name": "",
+  "email": "",
+  "phone": "",
+  "service": "",
+  "budget": "",
+  "timeline": "",
+  "project": ""
+}
+
+If the visitor has not provided a field, leave it blank.
+
+OUTPUT:
+
+Your response MUST be valid JSON with exactly these top-level fields:
+
+{
+  "answer": "Natural response to the visitor",
   "intent": "general|potential_client|existing_client|pending_job|owner_attention",
   "needs_attention": true,
   "lead": {
@@ -90,17 +238,9 @@ Your response must be valid JSON with exactly these fields:
   }
 }
 
-Set needs_attention to true when:
-- The visitor appears ready to hire ThattalkingGuy...
-- The visitor wants a quote or proposal
-- The visitor wants to start a project
-- The visitor reports an existing client/job issue
-- The visitor asks to speak directly with the owner
-- The visitor provides meaningful project information that deserves follow-up
-
-Set needs_attention to false for ordinary questions or casual conversation.
-
-Never invent visitor information.
+Do not include Markdown.
+Do not include code fences.
+Do not include explanations outside the JSON.
 `;
 
     const historyText = Array.isArray(conversation)
@@ -115,15 +255,23 @@ Never invent visitor information.
       : "";
 
     const visitorText = `
-Known visitor information:
-Name: ${visitor.name || "Not provided"}
-Email: ${visitor.email || "Not provided"}
-Phone: ${visitor.phone || "Not provided"}
+KNOWN VISITOR INFORMATION:
 
-Recent conversation:
+Name:
+${visitor.name || "Not provided"}
+
+Email:
+${visitor.email || "Not provided"}
+
+Phone:
+${visitor.phone || "Not provided"}
+
+RECENT CONVERSATION:
+
 ${historyText}
 
-New visitor message:
+NEW VISITOR MESSAGE:
+
 ${question}
 `;
 
@@ -157,21 +305,43 @@ ${question}
       };
     }
 
-    const lead = result.lead || {};
+    // Ensure the expected structure always exists.
+    if (!result.lead || typeof result.lead !== "object") {
+      result.lead = {};
+    }
+
+    const lead = result.lead;
 
     // Preserve information supplied directly by the visitor.
     lead.name = lead.name || visitor.name || "";
     lead.email = lead.email || visitor.email || "";
     lead.phone = lead.phone || visitor.phone || "";
+    lead.service = lead.service || "";
+    lead.budget = lead.budget || "";
+    lead.timeline = lead.timeline || "";
+    lead.project = lead.project || "";
 
     result.lead = lead;
 
+    // Normalize intent.
+    const allowedIntents = [
+      "general",
+      "potential_client",
+      "existing_client",
+      "pending_job",
+      "owner_attention",
+    ];
+
+    if (!allowedIntents.includes(result.intent)) {
+      result.intent = "general";
+    }
+
+    result.needs_attention = Boolean(result.needs_attention);
+
     /*
-     * Email notification:
+     * OWNER EMAIL NOTIFICATION
      *
-     * We only alert the owner when Sharon determines that the conversation
-     * requires attention. This prevents ordinary chat messages from
-     * generating unnecessary emails.
+     * Sharon only sends an email when human attention is required.
      */
     if (result.needs_attention === true) {
       const ownerEmail =
@@ -180,31 +350,78 @@ ${question}
       const fromEmail =
         process.env.FROM_EMAIL || "Sharon <onboarding@resend.dev>";
 
-      const subject =
-        result.intent === "pending_job"
-          ? "🔔 Sharon: Pending Job Needs Attention"
-          : result.intent === "existing_client"
-          ? "🔔 Sharon: Existing Client Needs Attention"
-          : "🔥 Sharon: New ThattalkingGuy... Lead";
+      let subject = "Sharon: ThattalkingGuy... Attention Required";
+
+      if (result.intent === "potential_client") {
+        subject = "Sharon: New Potential Client";
+      }
+
+      if (result.intent === "pending_job") {
+        subject = "Sharon: Pending Job Needs Attention";
+      }
+
+      if (result.intent === "existing_client") {
+        subject = "Sharon: Existing Client Needs Attention";
+      }
+
+      if (result.intent === "owner_attention") {
+        subject = "Sharon: Visitor Requests Owner Attention";
+      }
 
       const emailHtml = `
-        <div style="font-family:Arial,sans-serif;line-height:1.6">
-          <h2>${subject}</h2>
+        <div style="font-family:Arial,sans-serif;line-height:1.6;color:#222">
 
-          <p><strong>Sharon's assessment:</strong></p>
-          <p>${escapeHtml(result.answer || "")}</p>
+          <h2>${escapeHtml(subject)}</h2>
+
+          <p>
+            Sharon has identified a conversation that may require
+            attention from ThattalkingGuy...
+          </p>
 
           <hr>
 
+          <h3>Sharon's Assessment</h3>
+
+          <p>
+            ${escapeHtml(result.answer || "")}
+          </p>
+
           <h3>Lead / Client Information</h3>
 
-          <p><strong>Name:</strong> ${escapeHtml(lead.name || "Not provided")}</p>
-          <p><strong>Email:</strong> ${escapeHtml(lead.email || "Not provided")}</p>
-          <p><strong>Phone:</strong> ${escapeHtml(lead.phone || "Not provided")}</p>
-          <p><strong>Service:</strong> ${escapeHtml(lead.service || "Not identified")}</p>
-          <p><strong>Budget:</strong> ${escapeHtml(lead.budget || "Not provided")}</p>
-          <p><strong>Timeline:</strong> ${escapeHtml(lead.timeline || "Not provided")}</p>
-          <p><strong>Project:</strong> ${escapeHtml(lead.project || "Not provided")}</p>
+          <p>
+            <strong>Name:</strong>
+            ${escapeHtml(lead.name || "Not provided")}
+          </p>
+
+          <p>
+            <strong>Email:</strong>
+            ${escapeHtml(lead.email || "Not provided")}
+          </p>
+
+          <p>
+            <strong>Phone / WhatsApp:</strong>
+            ${escapeHtml(lead.phone || "Not provided")}
+          </p>
+
+          <p>
+            <strong>Service:</strong>
+            ${escapeHtml(lead.service || "Not identified")}
+          </p>
+
+          <p>
+            <strong>Budget:</strong>
+            ${escapeHtml(lead.budget || "Not provided")}
+          </p>
+
+          <p>
+            <strong>Timeline:</strong>
+            ${escapeHtml(lead.timeline || "Not provided")}
+          </p>
+
+          <p>
+            <strong>Project:</strong>
+            ${escapeHtml(lead.project || "Not provided")}
+          </p>
 
           <hr>
 
@@ -214,9 +431,17 @@ ${question}
           </p>
 
           <p>
-            This notification was generated by Sharon,
-            the AI client assistant for ThattalkingGuy...
+            <strong>Needs Attention:</strong>
+            Yes
           </p>
+
+          <hr>
+
+          <p style="font-size:12px;color:#666">
+            This notification was generated by Sharon,
+            the AI Client Assistant for ThattalkingGuy...
+          </p>
+
         </div>
       `;
 
@@ -228,7 +453,10 @@ ${question}
           html: emailHtml,
         });
       } catch (emailError) {
-        console.error("Sharon email notification error:", emailError);
+        console.error(
+          "Sharon email notification error:",
+          emailError
+        );
       }
     }
 
@@ -247,7 +475,7 @@ ${question}
       error: "Sharon is temporarily unavailable. Please try again.",
     });
   }
-}
+};
 
 function escapeHtml(value) {
   return String(value)
